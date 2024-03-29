@@ -11,7 +11,7 @@ namespace XBS_Tool
 {
     public class Program
     {
-        private string version = "1.0";
+        private string version = "1.1";
 
         private Dictionary<string, byte[]> fileTypes = new Dictionary<string, byte[]>
         {
