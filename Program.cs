@@ -13,6 +13,13 @@ namespace XBS_Tool
     {
         private string version = "1.0";
 
+        private Dictionary<string, byte[]> fileTypes = new Dictionary<string, byte[]>
+        {
+            { "dds", new byte[] { 0x44, 0x44, 0x53, 0x20 } },
+            { "xbxm", new byte[] { 0x58, 0x42, 0x58, 0x4D } },
+            { "anmx", new byte[] { 0x41, 0x4E, 0x4D, 0x58 } }
+        };
+
         public Program(string[] args)
         {
             Console.Title = $"XBS Tool v{version} - Dan";
@@ -56,13 +63,6 @@ namespace XBS_Tool
         {
             Console.WriteLine($"[XBS-Tool]: Decrypting: {data.Length} bytes, folderName -> {folderName}");
 
-            Dictionary<string, byte[]> fileTypes = new Dictionary<string, byte[]>
-            {
-                { "dds", new byte[] { 0x44, 0x44, 0x53, 0x20 } },
-                { "xbxm", new byte[] { 0x58, 0x42, 0x58, 0x4D } },
-                { "anmx", new byte[] { 0x41, 0x4E, 0x4D, 0x58 } }
-            };
-
             List<(string type, int offset)> foundFiles = new List<(string, int)>();
 
             try
@@ -88,6 +88,7 @@ namespace XBS_Tool
                 Console.WriteLine($"[XBS-Tool]: Finding files failed -> {ex.Message}.");
             }
 
+            Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[XBS-Tool]: Retrieved {foundFiles.Count()} files, writing...");
 
             Directory.CreateDirectory(folderName);
@@ -113,6 +114,7 @@ namespace XBS_Tool
             }
             catch (Exception ex)
             {
+                Console.ForegroundColor = ConsoleColor.Red;
                 Console.WriteLine($"[XBS-Tool]: Error writing the files -> {ex.Message}.");
             }
         }
@@ -123,22 +125,49 @@ namespace XBS_Tool
             {
                 file.Seek(offset, SeekOrigin.Begin);
 
-                try
+                bool noZLib = false;
+
+                //Ensure that there is ZLIB, check 0x40 for one of the file types.?
+                byte[] first4 = new byte[4];
+                file.Read(first4, 0, 4);
+
+                foreach (KeyValuePair<string, byte[]> pair in fileTypes)
                 {
-                    using (var resultStream = new MemoryStream())
+                    if (first4.SequenceEqual(pair.Value))
                     {
-                        using (var decompressionStream = new InflaterInputStream(file, new Inflater()))
-                        {
-                            decompressionStream.CopyTo(resultStream);
-                            Console.WriteLine("[XBS-Tool]: ZLib removed.");
-                            return resultStream.ToArray();
-                        }
+                        Console.WriteLine("[XBS-Tool]: No ZLib?, Continuing...");
+                        noZLib = true;
                     }
                 }
-                catch (Exception ex)
+
+                //Put file buffer pos back to offset.
+                file.Seek(offset, SeekOrigin.Begin);
+
+                if(!noZLib)
                 {
-                    Console.WriteLine($"[XBS-Tool]: ZLib failed -> {ex.Message}.");
-                    return new byte[] { };
+                    try
+                    {
+                        using (var resultStream = new MemoryStream())
+                        {
+                            using (var decompressionStream = new InflaterInputStream(file, new Inflater()))
+                            {
+                                decompressionStream.CopyTo(resultStream);
+                                Console.WriteLine("[XBS-Tool]: ZLib removed.");
+                                return resultStream.ToArray();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[XBS-Tool]: ZLib failed -> {ex.Message}.");
+                        return new byte[] { };
+                    }
+                }
+                else
+                {
+                    byte[] wholeFile = new byte[file.Length];
+                    file.Read(wholeFile, 0, (int)file.Length);
+                    return wholeFile;
                 }
             }
         }
